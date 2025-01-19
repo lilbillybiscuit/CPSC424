@@ -69,7 +69,8 @@ int main() {
 
     std::cin >> n;
 
-    int roundedn = (n+8-1)/8*8; // pack 8 ints per vector
+    int roundto = 16;
+    int roundedn = (n+roundto-1)/roundto*roundto; // pack 8 ints per vector
 
 
     // Create matrices A, B, and C (all n x n)
@@ -95,15 +96,21 @@ int main() {
     // YOUR CODE HERE
     ull start = rdtsc();
     for (int i=0; i<n; i++) {
-        for (int j=0; j<n; j+=8) { // 4bytes*16 = 64Bsize of cache line. TODO: CHANGE TO 16 to try
-            __m256i accum = _mm256_setzero_si256();
+        for (int j=0; j<n; j+=16) { // 4bytes*16 = 64Bsize of cache line. TODO: CHANGE TO 16 to try
+            __m256i accum1 = _mm256_setzero_si256();
+            __m256i accum2 = _mm256_setzero_si256();
             for (int k=0; k<n; k++) {
-                __m256i v = _mm256_set1_epi32(A[i][k]);
-                __m256i w = _mm256_load_si256((__m256i*)&B[k][j]);
-                __m256i res = _mm256_mullo_epi32(v,w);
-                accum = _mm256_add_epi32(accum, res);
+                __m256i v1 = _mm256_set1_epi32(A[i][k]);
+                __m256i v2 = _mm256_set1_epi32(A[i][k]);
+                __m256i w1 = _mm256_load_si256((__m256i*)&B[k][j]);
+                __m256i w2 = _mm256_load_si256((__m256i*)&B[k][j+8]);
+                __m256i res1 = _mm256_mullo_epi32(v1,w1);
+                __m256i res2 = _mm256_mullo_epi32(v2,w2);
+                accum1 = _mm256_add_epi32(accum1, res1);
+                accum2 = _mm256_add_epi32(accum2, res2);
             }
-            _mm256_store_si256((__m256i*)&C[i][j], accum);
+            _mm256_store_si256((__m256i*)&C[i][j], accum1);
+            _mm256_store_si256((__m256i*)&C[i][j+8], accum2);
         }
     }
     ull end = rdtsc();
