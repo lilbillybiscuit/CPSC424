@@ -71,12 +71,13 @@ int main() {
 
     int roundto = 16;
     int roundedn = (n+roundto-1)/roundto*roundto; // pack 8 ints per vector
+    const int alignment = 64;
 
 
     // Create matrices A, B, and C (all n x n)
-    std::vector<std::vector<int, AlignedVectorAllocator<int, 32>>> A(n, std::vector<int, AlignedVectorAllocator<int, 32>>(roundedn));
-    std::vector<std::vector<int, AlignedVectorAllocator<int, 32>>> B(n, std::vector<int, AlignedVectorAllocator<int, 32>>(roundedn));
-    std::vector<std::vector<int, AlignedVectorAllocator<int, 32>>> C(n, std::vector<int, AlignedVectorAllocator<int, 32>>(roundedn, 0));
+    std::vector<std::vector<int, AlignedVectorAllocator<int, alignment>>> A(n, std::vector<int, AlignedVectorAllocator<int, alignment>>(roundedn));
+    std::vector<std::vector<int, AlignedVectorAllocator<int, alignment>>> B(n, std::vector<int, AlignedVectorAllocator<int, alignment>>(roundedn));
+    std::vector<std::vector<int, AlignedVectorAllocator<int, alignment>>> C(n, std::vector<int, AlignedVectorAllocator<int, alignment>>(roundedn, 0));
 
     // Read matrix A
     for (int i = 0; i < n; ++i) {
@@ -97,24 +98,24 @@ int main() {
     ull start = rdtsc();
     for (int i=0; i<n; i++) {
         for (int j=0; j<n; j+=16) { // 4bytes*16 = 64Bsize of cache line. TODO: CHANGE TO 16 to try
-            __m256i accum1 = _mm256_setzero_si256();
-            __m256i accum2 = _mm256_setzero_si256();
+            __m512i accum = _mm512_setzero_si512();
+            // __m256i accum1 = _mm256_setzero_si256();
             for (int k=0; k<n; k++) {
-                __m256i v1 = _mm256_set1_epi32(A[i][k]);
-                __m256i v2 = _mm256_set1_epi32(A[i][k]);
-                __m256i w1 = _mm256_load_si256((__m256i*)&B[k][j]);
-                __m256i w2 = _mm256_load_si256((__m256i*)&B[k][j+8]);
-                __m256i res1 = _mm256_mullo_epi32(v1,w1);
-                __m256i res2 = _mm256_mullo_epi32(v2,w2);
-                accum1 = _mm256_add_epi32(accum1, res1);
-                accum2 = _mm256_add_epi32(accum2, res2);
+                __m512i v1 = _mm512_set1_epi32(A[i][k]);
+                // __m256i v2 = _mm256_set1_epi32(A[i][k]);
+                __m512i w1 = _mm512_load_si512((__m512i*)&B[k][j]);
+                // __m256i w2 = _mm256_load_si256((__m256i*)&B[k][j+8]);
+                __m512i res1 = _mm512_mullo_epi32(v1,w1);
+                // __m256i res2 = _mm256_mullo_epi32(v2,w2);
+                accum = _mm512_add_epi32(accum, res1);
+                // accum2 = _mm256_add_epi32(accum2, res2);
             }
-            _mm256_store_si256((__m256i*)&C[i][j], accum1);
-            _mm256_store_si256((__m256i*)&C[i][j+8], accum2);
+            _mm512_store_epi32((__m512i*)&C[i][j], accum);
+            // _mm256_store_si256((__m256i*)&C[i][j+8], accum2);
         }
     }
     ull end = rdtsc();
-    std::cout << "Used " << end-start << " cycles\n";
+    std::cerr << "Used " << end-start << " cycles\n";
 
     std::cout << "The resulting matrix C = A x B is:\n";
     for (int i = 0; i < n; ++i) {

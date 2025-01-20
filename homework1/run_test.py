@@ -15,7 +15,7 @@ s = str(n) + "\n"
 s += "\n".join([" ".join([str(x) for x in row]) for row in A]) + "\n"
 s += "\n".join([" ".join([str(x) for x in row]) for row in B]) + "\n"
 
-compile_cmd = ["g++", "-std=c++17", "-O3", "-fopenmp", "-mavx2",  "-o", "matrixmult", "matrixmult.cpp"]
+compile_cmd = ["g++", "-std=c++17", "-O3", "-fopenmp", "-mavx2", "-mavx512f",   "-o", "matrixmult", "matrixmult.cpp"]
 res = subprocess.run(compile_cmd)
 if res.returncode != 0:
     print("Compilation failed")
@@ -30,8 +30,8 @@ for i in range(num_runs):
     total_time += end_time - start_time
 
     temp_output = output.stdout.decode().split("\n")
-    print(temp_output[0])
-    output = temp_output[2:]
+    print(output.stderr.decode().split("\n")[0])
+    output = temp_output[1:]
     output = np.array([list(map(int, row.split())) for row in output if row])
     if not np.allclose(C, output):
         print("Failed")
