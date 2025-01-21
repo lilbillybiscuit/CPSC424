@@ -175,7 +175,7 @@ def compile_cpp_source():
         print("Error: matrixmult.cpp not found.")
         return False
 
-    compile_cmd = ["g++", "-std=c++17", "-O3", "-fopenmp", "-mavx2", "-mavx512f", "-o", "matrixmult", "matrixmult.cpp"]
+    compile_cmd = ["g++-12", "-std=c++17", "-O3", "-fopenmp", "-o", "matrixmult", "matrixmult.cpp"]
     try:
         subprocess.run(compile_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return True
