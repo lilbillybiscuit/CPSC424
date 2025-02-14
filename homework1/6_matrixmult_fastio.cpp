@@ -13,6 +13,7 @@ Time  0.1160420 with kernel size 4x16, block size 4
 
 #include <omp.h>
 
+
 // measure the amount of clock cycles used. Useful only on x86_64 (notably not on ARM or x86)
 typedef unsigned long long ull;
 
@@ -26,14 +27,16 @@ static inline uint64_t rdtsc() {
 #endif
 }
 
-const std::pair<int,int> kernel_size = {12, 16}; // second number should be a multiple of BLOCK_SIZE
-const   int BLOCK_SIZE = 16;
+const std::pair<int,int> kernel_size = {4, 16}; // second number should be a multiple of BLOCK_SIZE
+const   int BLOCK_SIZE = 4;
 const   int alignment = 64;
 const   int VECTOR_SIZE = sizeof(int)*BLOCK_SIZE;
 
-const   int L3_CACHE_SIZE = 32*1024*1024; // 32 MB
-const   int L2_CACHE_SIZE = 256*1024; // 256 KB
-const   int L1_CACHE_SIZE = 32*1024; // 32 KB
+//const   int L3_CACHE_SIZE = 1024*1024*2; // 32 MB
+const   int L2_CACHE_SIZE = 1024*1024; // 256 KB
+const   int L1_CACHE_SIZE = 128*1024; // 32 KB
+
+const int N_KERNEL_COLS_PER_L3 = 16; // for 2048 matrix, kernel width =32,  each column selection block takes 2048*4 = 8KB.
 
 typedef int intvec __attribute__ ((vector_size(VECTOR_SIZE))); // 32 bytes = 8 integers (8 * 4 bytes/int)
 template <class T, std::size_t alignment>
@@ -117,8 +120,8 @@ __attribute__((target("avx512f")))
 #else
 #endif
 int main() {
-
     assert(kernel_size.second % BLOCK_SIZE==0);
+    assert(N_KERNEL_COLS_PER_L3 > 0);
     int n;
     std::ios::sync_with_stdio(0);
     std::cin.tie(0);
@@ -156,12 +159,12 @@ int main() {
 //            kernel(A, B, C, i, j, 0, n, NUM_BLOCKS_COL);
 //        }
 //    }
-    const int N_KERNEL_COLS_PER_L3 = 24; assert(N_KERNEL_COLS_PER_L3 > 0); // for 2048 matrix, kernel width =32,  each column selection block takes 2048*4 = 8KB.
-//    std::cerr << "N_KERNEL_COLS_PER_L3: " << N_KERNEL_COLS_PER_L3 << "\n";
+
+    std::cerr << "N_KERNEL_COLS_PER_L3: " << N_KERNEL_COLS_PER_L3*kernel_size.second << "\n";
     const int N_KERNEL_ROWS_PER_L2 = (L2_CACHE_SIZE / (sizeof(int) * NUM_BLOCKS_COL * BLOCK_SIZE)) / kernel_size.first; assert(N_KERNEL_ROWS_PER_L2 > 0); // for 2048 matrix, block size=4, each row selection block takes 2048*4 = 8KB.
-//    std::cerr << "N_KERNEL_ROWS_PER_L2: " << N_KERNEL_ROWS_PER_L2 << "\n";
+    std::cerr << "N_KERNEL_ROWS_PER_L2: " << N_KERNEL_ROWS_PER_L2*kernel_size.first << "\n";
     const int N_KERNEL_ROWS_PER_L1 = L1_CACHE_SIZE / (N_KERNEL_COLS_PER_L3 * sizeof(int) * kernel_size.second) / kernel_size.first; assert(N_KERNEL_ROWS_PER_L1 > 0); // for 2048 matrix, block size=4, for a single column selection (block_size columns), we need block_size * block_size * 4 = 64B of data
-//    std::cerr << "N_KERNEL_ROWS_PER_L1: " << N_KERNEL_ROWS_PER_L1 << "\n";
+    std::cerr << "N_KERNEL_ROWS_PER_L1: " << N_KERNEL_ROWS_PER_L1*kernel_size.first << "\n";
 
     auto start = std::chrono::high_resolution_clock::now();
 #pragma omp parallel for collapse(2)
@@ -171,16 +174,16 @@ int main() {
 
                 // here we are only considering processing whole kernels, the dimensions should be multiples of kernel_size.
                 // if the block is not complete, then the std::min will make sure we don't go out of bounds
-                int i1_end = i1 + N_KERNEL_ROWS_PER_L1 * kernel_size.first;
-                int i2_end = i2 + N_KERNEL_ROWS_PER_L2 * kernel_size.first;
-                int i3_end = i3 + N_KERNEL_COLS_PER_L3 * kernel_size.second / BLOCK_SIZE;
+                int i1_end = std::min(i1 + N_KERNEL_ROWS_PER_L1 * kernel_size.first, n);
+                int i2_end = std::min(i2 + N_KERNEL_ROWS_PER_L2 * kernel_size.first, NUM_BLOCKS_ROW);
+                int i3_end = std::min(i3 + N_KERNEL_COLS_PER_L3 * kernel_size.second / BLOCK_SIZE, NUM_BLOCKS_COL);
 
                 int counter = 0;
-                for (int x=i2; x<std::min(i2_end, NUM_BLOCKS_ROW); x+=kernel_size.first) { // select vertical kernel blocks of A
-                    for (int y=i3; y<std::min(i3_end, NUM_BLOCKS_COL); y+= kernel_size.second / BLOCK_SIZE) { // select horizontal kernel blocks of B
+                for (int x=i2; x<i2_end; x+=kernel_size.first) { // select vertical kernel blocks of A
+                    for (int y=i3; y<i3_end; y+= kernel_size.second / BLOCK_SIZE) { // select horizontal kernel blocks of B
                         counter++;
 //                        std::cerr << "i1: " << i1 << " ending_range: " << ending_range << "\n";
-                        kernel(A, B, C, x, y, i1, std::min(i1_end, n), NUM_BLOCKS_COL);
+                        kernel(A, B, C, x, y, i1, i1_end, NUM_BLOCKS_COL);
                     }
                 }
 //                std::cerr << "counter: " << counter << "\n";
